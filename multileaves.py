@@ -16,7 +16,6 @@ import threading
 import signal
 import time
 import json
-from firebase import firebase
 import requests
 import firebase_admin
 from firebase_admin import credentials
@@ -136,78 +135,6 @@ class DbThread(threading.Thread):
                    # logging.debug('[%-12s] from(type) = %s, from(no) = %s, cmd = %-10s', 'queue rcvd', msg.fromThreadType, msg.fromThreadNo, msg.cmd)
                    ThreadData['db']['heartbeat'] += 1;
                    # logging.debug('[%-12s] heartbeat = %s', 'heartbeat update', ThreadData['db']['heartbeat'])
-
-                elif(msg.cmd == 'exit'):
-                   logging.debug('[%-12s] from(type) = %s, from(no) = %s, cmd = %-10s', 'queue rcvd', msg.fromThreadType, msg.fromThreadNo, msg.cmd)
-                   break
-
-                # DbWorkerThreadQueue.task_done()
-
-class FirebaseThread(threading.Thread):
-
-    queueBuf = Queue()
-
-    url = 'https://xxxx.firebaseio.com'
-    path = '/leafeed/dev/status/sensors/'
-    fb = None
-
-    #constructor
-    def __init__(self, group=None, target=None, name=None,args=(), kwargs=None, verbose=None):
-        threading.Thread.__init__(self, group=group, target=target, name=name, verbose=verbose)
-        self.args = args
-        self.kwargs = kwargs
-        self.fb = firebase.FirebaseApplication(self.url, None)
-
-    def putQueue(self, msg):
-        self.queueBuf.put(msg)
-
-    # db insert
-    # method : 0 = notification, 1 = read in startup, 2 = read by heartbeat
-    def saveStatus(self, addr, isclose):
-
-        sensor = str(addr).replace(':', '')
-        data = {"isclose": str(isclose), "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")}
-
-        try:
-            # curlの場合は、112233445566.jsonが必要だが、このライブラリはいらない。
-            result = self.fb.put('', self.path + '/' + sensor, data)
-            logging.debug('[%-12s] sensor = %s, result = %s', 'put firebase', sensor, result)
-            return True
-        except (requests.HTTPError, Exception) as e:
-            logging.debug('[%-12s] sensor = %s, result = %s', 'put firebase', sensor, -1)
-            return False 
-
-        logging.debug('[%-12s] sensor = %s, result = %s', 'put firebase', sensor, result)
-
-
-    def readStatus(self, addr):
-
-        sensor = str(addr).replace(':', '')
-        # curlの場合は、112233445566.jsonが必要だが、このライブラリはいらない。
-        result = self.fb.get(self.path + '/' + sensor, None)
-        logging.debug('[%-12s] sensor = %s, result = %s', 'read firebase', sensor, result)
-
-    def run(self):
-        logging.debug('[%-12s] with args(%s) and kwargs(%s)', 'startup', self.args, self.kwargs)
-
-        while True:
-            msg = self.queueBuf.get()
-            if msg is None:
-                loggin.debug("thread None")
-            else:
-                if (msg.cmd == 'insert' or msg.cmd == 'response'):
-                   logging.debug('[%-12s] from(type) = %s, from(no) = %s, cmd = %-10s, data = %s', 'queue rcvd', msg.fromThreadType, msg.fromThreadNo, msg.cmd, json.dumps(msg.data.__dict__))
-
-                   if self.saveStatus(msg.data.sensorAddr, msg.data.isClose) == False:
-                       global ThreadData
-                       reqmsg = QueueMessage(ThreadData['firebase']['type'], '0', 'request')
-                       ThreadData['sensor'][msg.fromThreadNo]['worker'].putQueue(reqmsg)
-                       logging.debug('[%-12s] from(type) = %s, from(no) = %s, cmd = %-10s', 'queue send', reqmsg.fromThreadType, reqmsg.fromThreadNo, reqmsg.cmd)
-
-                elif(msg.cmd == 'heartbeat'):
-                   # logging.debug('[%-12s] from(type) = %s, from(no) = %s, cmd = %-10s', 'queue rcvd', msg.fromThreadType, msg.fromThreadNo, msg.cmd)
-                   ThreadData['firebase']['heartbeat'] += 1;
-                   # logging.debug('[%-12s] heartbeat = %s', 'heartbeat update', ThreadData['firebase']['heartbeat'])
 
                 elif(msg.cmd == 'exit'):
                    logging.debug('[%-12s] from(type) = %s, from(no) = %s, cmd = %-10s', 'queue rcvd', msg.fromThreadType, msg.fromThreadNo, msg.cmd)
@@ -432,31 +359,6 @@ class SensorThread(threading.Thread):
 
         global ConfigData
         global ThreadData
-
-        '''
-        while True:
-            try:
-                p = Peripheral(self.addr)
-                logging.debug('[%-12s] to addr(%s)', 'connected', self.addr)
-
-                p.setDelegate(NotificationDelegate(self.indexTh))
-                ThreadData['sensor'][self.indexTh]['peripheral'] = p
-
-                # read the current status
-                data = p.readCharacteristic(0x002a)
-                isclose = int(binascii.b2a_hex(data))
-                self.sendDbQueue(isclose, 0, 'insert')
-
-                # start notification
-                p.writeCharacteristic(0x002b, "\x01\x00", True)
-
-                break
-
-            except btle.BTLEException:
-                logging.debug('[%-12s] to addr(%s)', 'cannot connect', self.addr)
-                time.sleep(1)
-        '''
-
 
         p = Empty
         while True:
