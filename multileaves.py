@@ -17,7 +17,7 @@ import signal
 import time
 import json
 
-logging.basicConfig(level=logging.DEBUG, format='(%(threadName)-10s) %(message)s',)
+logging.basicConfig(level=logging.DEBUG, format='[%(asctime)s][%(threadName)-10s]%(message)s',datefmt="%Y-%m-%d %H:%M:%S")
 
 
 LeafeeAddrs = ['xx:xx:xx:xx:xx:xx']
@@ -75,9 +75,13 @@ class DbThread(threading.Thread):
             create_table = 'CREATE TABLE ' + self.dbtable + '(id INTEGER PRIMARY KEY AUTOINCREMENT, devid INTEGER, isclose INTEGER, method INTEGER DEFAULT 0, created TEXT DEFAULT CURRENT_TIMESTAMP)'
             c.execute(create_table)
             conn.commit()
- 
-        # disconnect
-        conn.close()
+            conn.close()
+            os.chmod(self.dbpath + '/' + self.dbname, 0666)
+        else: 
+            # disconnect
+            conn.close()
+
+
 
     def putQueue(self, msg):
         self.queueBuf.put(msg)
@@ -179,21 +183,67 @@ class SensorThread(threading.Thread):
             return 2 
 
         global ThreadData
-        peripheral = ThreadData['sensor'][self.indexTh]['peripheral']
-        peripheral.setDelegate(NotificationDelegate(self.indexTh))
 
-        # read the current status
-        data = peripheral.readCharacteristic(0x002a)
-        isclose = int(binascii.b2a_hex(data))
-        self.sendDbQueue(isclose, 0)
-
-
-        # start notification 
-        peripheral.writeCharacteristic(0x002b, "\x01\x00", True)
-
+        '''
         while True:
-            # receive notification
-            peripheral.waitForNotifications(1.0)
+            try:
+                p = Peripheral(self.addr)
+                logging.debug('[%-12s] to addr(%s)', 'connected', self.addr)
+
+                p.setDelegate(NotificationDelegate(self.indexTh))
+                ThreadData['sensor'][self.indexTh]['peripheral'] = p
+
+                # read the current status
+                data = p.readCharacteristic(0x002a)
+                isclose = int(binascii.b2a_hex(data))
+                self.sendDbQueue(isclose, 0)
+
+                # start notification 
+                p.writeCharacteristic(0x002b, "\x01\x00", True)
+
+                break
+
+            except btle.BTLEException:
+                logging.debug('[%-12s] to addr(%s)', 'cannot connect', self.addr)
+                time.sleep(1)
+        ''' 
+
+
+
+        p = Empty
+        while True:
+            try:
+                if p is Empty:
+                    raise btle.BTLEException(btle.BTLEException.DISCONNECTED, 'BeforeConnect')
+
+                # receive notification
+                p.waitForNotifications(1.0)
+
+            # except btle.BTLEException as e:
+            except (btle.BTLEException, Exception) as e:
+                if e.message is not 'BeforeConnect':
+                    logging.debug('[%-12s] to addr(%s)', 'disconnected', self.addr)
+
+                # connection
+                try:
+                    p = Peripheral(self.addr)
+                    logging.debug('[%-12s] to addr(%s)', 'connected', self.addr)
+
+                    p.setDelegate(NotificationDelegate(self.indexTh))
+                    ThreadData['sensor'][self.indexTh]['peripheral'] = p
+
+                    # read the current status
+                    data = p.readCharacteristic(0x002a)
+                    isclose = int(binascii.b2a_hex(data))
+                    self.sendDbQueue(isclose, 0)
+
+                    # start notification 
+                    p.writeCharacteristic(0x002b, "\x01\x00", True)
+
+                except (btle.BTLEException, Exception):
+                    logging.debug('[%-12s] to addr(%s)', 'cannot connect', self.addr)
+                    time.sleep(1)
+            
 
             # check message from other thread
             if not self.queueBuf.empty():
@@ -207,6 +257,8 @@ class SensorThread(threading.Thread):
                     elif(msg.cmd == 'exit'):
                         logging.debug('[%-12s] from(type) = %s, from(no) = %s, cmd = %-10s', 'queue rcvd', msg.fromThreadType, msg.fromThreadNo, msg.cmd)
                         break
+
+            # logging.debug('[%-12s]', 'None') 
 
 
 def sigterm_handler(signum, frame):
@@ -283,7 +335,7 @@ def main(args):
 
     for i in range(len(LeafeeAddrs)):
         t = SensorThread(args=(i,), kwargs={'devid':str(i + 1), 'addr':LeafeeAddrs[i]})
-        ThreadData['sensor'].append({'type':ThreadType['sensor'], 'worker':t, 'peripheral':Peripheral(LeafeeAddrs[i])})
+        ThreadData['sensor'].append({'type':ThreadType['sensor'], 'worker':t, 'peripheral':Empty})
 
     for t in ThreadData['sensor']:
         t['worker'].setDaemon(True)
@@ -298,9 +350,11 @@ def main(args):
             logging.debug('[%-12s] from(type) = %s, from(no) = %s, cmd = %-10s', 'queue rcvd', msg.fromThreadType, msg.fromThreadNo, msg.cmd)
             logging.debug('add procedure here')
         except Empty:
-            logging.debug('[%-12s]', 'None')
-
+            # logging.debug('[%-12s]', 'None')
+            pass
 
 
 if __name__ == "__main__":
     main(sys.argv)
+
+
