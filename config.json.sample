@@ -1,0 +1,16 @@
+{
+    "leafee":["xx:xx:xx:xx:xx:xx","xx:xx:xx:xx:xx:xx"]
+    ,"sqlite":{
+        "use":"1"
+        ,"path":"/tmp/sqlite"
+        ,"db":"sensor.db"
+        ,"table":"lf_log_table"
+    }
+    ,"firebase":{
+        "use":"1"
+        ,"url":"https://xxx.firebaseio.com"
+        ,"path":"/leafeed/dev/status/sensors"
+        ,"cred":"/home/xxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.json"
+    }
+}
+

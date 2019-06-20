@@ -1,0 +1,26 @@
+{
+    "leafee": "USAGE: put as array of blutooth leafee device address(es)"
+    ,"leafee": ["xx:xx:xx:xx:xx:xx"]
+    ,"leafee": ["xx:xx:xx:xx:xx:xx","zz:zz:zz:zz:zz:zz"]
+    ,"sqlite":{
+        "use":"USAGE: 1 or 0. 1 To make sqlite3 db and save log into."
+        "use":"1"
+        ,"path":"USAGE: set the sqlite db file path."
+        ,"path":"/tmp/sqlite"
+        ,"db":"USAGE: set the sqlite db file name."
+        ,"db":"sensor.db"
+        ,"table":"USAGE: set the sqlite db table name."
+        ,"table":"lf_log_table"
+    }
+    ,"firebase":{
+        "use":"USAGE: 1 or 0. 1 To post the data into firebase realtime database."
+        "use":"1"
+        ,"url":"USAGE: set the firebase realtime database url. Required to register and make firebase before use this."
+        ,"url":"https://xxxxx.firebaseio.com"
+        ,"path":"USAGE: set the firebase realtime database target directory. Required to make the path in firebase realtime database before use this."
+        ,"path":"/leafeed/dev/status/sensors"
+        ,"cred":"USAGE: set the credential file location of the firebase realtime database, if it is private."
+        ,"cred":"/home/xxx/xxxxx-firebase-adminsdk-xxxx-xxxxxxx.json"
+    }
+}
+

@@ -22,11 +22,11 @@ import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import db
 
+# debug setting
 logging.basicConfig(level=logging.DEBUG, format='[%(asctime)s][%(threadName)-10s]%(message)s',datefmt="%Y-%m-%d %H:%M:%S")
 
-
-LeafeeAddrs = ['xx:xx:xx:xx:xx:xx']
-
+# global data
+ConfigData = {}
 ThreadType = {'main':'0', 'db':'1', 'firebase':'2', 'sensor':'9'}
 ThreadData = {
         'main':{'type':ThreadType['main'], 'worker':None, 'queue':Queue(), 'heartbeat':0},
@@ -35,6 +35,7 @@ ThreadData = {
         'sensor':[]  # [{'type':'9', 'worker':WorkerThreadObject, 'peripheral':PeripheralObject}, {...}, {...}]
 }
 
+# data format (QueueMessage.data) for DB Thread
 class DbSaveData():
     def __init__(self, sensorNo, sensorAddr, isClose, method):
         self.sensorNo   = sensorNo
@@ -42,6 +43,7 @@ class DbSaveData():
         self.isClose    = isClose
         self.method     = method
 
+# queue message format for thread communication
 class QueueMessage():
     def __init__(self, fromThreadType, fromThreadNo, cmd, data=None):
         self.fromThreadType = fromThreadType
@@ -54,10 +56,10 @@ class DbThread(threading.Thread):
 
     queueBuf = Queue()
 
-    # dbname = "/var/www/data/sqlite"
+    # default setting for temporal
     dbpath = "/tmp/sqlite"
     dbname = "sensor.db"
-    dbtable = "lf_log_table"
+    dbtable = "log_table"
 
     #constructor
     def __init__(self, group=None, target=None, name=None,args=(), kwargs=None, verbose=None):
@@ -65,6 +67,13 @@ class DbThread(threading.Thread):
         self.args = args
         self.kwargs = kwargs
 
+        # set the configuration
+        global ConfigData;
+        self.dbpath = ConfigData["sqlite"]["path"]
+        self.dbname = ConfigData["sqlite"]["db"]
+        self.dbtable = ConfigData["sqlite"]["table"]
+
+        # check save path
         if not os.path.exists(self.dbpath):
             os.makedirs(self.dbpath)
             os.chmod(self.dbpath, 0777)
@@ -210,20 +219,25 @@ class FirebaseAdminThread(threading.Thread):
 
     queueBuf = Queue()
 
-    url = 'https://xxxx.firebaseio.com'
-    path = '/leafeed/dev/status/sensors'
-    cred = '/home/xxx/xxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.json'
+    url = None
+    path = None
+    cred = None
 
     app = Empty
     db = Empty
     isReady = False
-
 
     #constructor
     def __init__(self, group=None, target=None, name=None,args=(), kwargs=None, verbose=None):
         threading.Thread.__init__(self, group=group, target=target, name=name, verbose=verbose)
         self.args = args
         self.kwargs = kwargs
+
+        # set the configuration
+        global ConfigData;
+        self.url = ConfigData["firebase"]["url"]
+        self.path = ConfigData["firebase"]["path"]
+        self.cred = ConfigData["firebase"]["cred"]
 
         if self.initApp() == True:
             self.initDb()
@@ -351,10 +365,17 @@ class NotificationDelegate(btle.DefaultDelegate):
         isclose = int(binascii.b2a_hex(data))
         logging.debug('[%-12s] sensoer number = %s, value = %s', 'notification', self.number, isclose)
 
+        global ConfigData
         global ThreadData
         ThreadData['sensor'][self.indexTh]['worker'].setLastStatus(isclose)
-        ThreadData['sensor'][self.indexTh]['worker'].sendDbQueue(isclose, 1, 'insert')
-        ThreadData['sensor'][self.indexTh]['worker'].sendFbQueue(isclose, 1, 'insert')
+
+        # to db thread
+        if (ConfigData["sqlite"]["use"] == "1"):
+            ThreadData['sensor'][self.indexTh]['worker'].sendDbQueue(isclose, 1, 'insert')
+
+        # to db thread
+        if (ConfigData["firebase"]["use"] == "1"):
+            ThreadData['sensor'][self.indexTh]['worker'].sendFbQueue(isclose, 1, 'insert')
 
 
 # worker thread class
@@ -409,6 +430,7 @@ class SensorThread(threading.Thread):
         if (self.addr is None):
             return 2
 
+        global ConfigData
         global ThreadData
 
         '''
@@ -458,8 +480,14 @@ class SensorThread(threading.Thread):
                     data = p.readCharacteristic(0x002a)
                     isclose = int(binascii.b2a_hex(data))
                     self.lastIsClose = isclose
-                    self.sendDbQueue(isclose, 0, 'insert')
-                    self.sendFbQueue(isclose, 0, 'insert')
+
+                    # to db thread
+                    if (ConfigData["sqlite"]["use"] == "1"):
+                        self.sendDbQueue(isclose, 0, 'insert')
+
+                    # to firebase thread
+                    if (ConfigData["firebase"]["use"] == "1"):
+                        self.sendFbQueue(isclose, 0, 'insert')
 
                     # start notification
                     p.setDelegate(NotificationDelegate(self.indexTh))
@@ -534,6 +562,11 @@ def sigalrm_handler(signum, frame):
 
 def main(args):
 
+    # load configuration
+    global ConfigData;
+    f = open("config.json")
+    ConfigData = json.load(f)
+
     '''
     # signal
     # http://ja.pymotw.com/2/signal/
@@ -566,29 +599,20 @@ def main(args):
     global ThreadData 
 
     # db thread start
-    ThreadData['db']['worker'] = DbThread()
-    ThreadData['db']['worker'].setDaemon(True)
-    ThreadData['db']['worker'].start()
+    if (ConfigData["sqlite"]["use"] == "1"):
+        ThreadData['db']['worker'] = DbThread()
+        ThreadData['db']['worker'].setDaemon(True)
+        ThreadData['db']['worker'].start()
 
-    '''
-    # test
-    dbdata = DbSaveData(1,2,3,4)
-    msg = QueueMessage(ThreadData['main']['type'], 0, 'insert', dbdata)
-    ThreadData['db']['worker'].putQueue(msg)
-    dbdata = DbSaveData(9,8,7,6)
-    msg = QueueMessage(ThreadData['main']['type'], 0, 'insert', dbdata)
-    ThreadData['db']['worker'].putQueue(msg)
-    '''
-
-    # db thread start
-    ThreadData['firebase']['worker'] = FirebaseAdminThread()
-    ThreadData['firebase']['worker'].setDaemon(True)
-    ThreadData['firebase']['worker'].start()
-
+    # firebase thread start
+    if (ConfigData["firebase"]["use"] == "1"):
+        ThreadData['firebase']['worker'] = FirebaseAdminThread()
+        ThreadData['firebase']['worker'].setDaemon(True)
+        ThreadData['firebase']['worker'].start()
 
     # sensor thread start
-    for i in range(len(LeafeeAddrs)):
-        t = SensorThread(args=(i,), kwargs={'devid':str(i + 1), 'addr':LeafeeAddrs[i]})
+    for i in range(len(ConfigData["leafee"])):
+        t = SensorThread(args=(i,), kwargs={'devid':str(i + 1), 'addr':ConfigData["leafee"][i]})
         ThreadData['sensor'].append({'type':ThreadType['sensor'], 'worker':t, 'peripheral':Empty, 'heartbeat':0})
 
     for t in ThreadData['sensor']:
@@ -596,9 +620,9 @@ def main(args):
         t['worker'].start()
 
 
+    # recieve queue and send heartbeat
     heartbeat = 0;
     isSendOrCheck = True
-    # recieve queue and send heartbeat
     while True:
         try:
             # msg = MainQueue.get()
@@ -618,33 +642,42 @@ def main(args):
                 heartbeat = 0
                 if isSendOrCheck == True:
                     msg = QueueMessage(ThreadData['main']['type'], 0, 'heartbeat')
-                    ThreadData['db']['worker'].putQueue(msg)
-                    ThreadData['firebase']['worker'].putQueue(msg)
+
+                    # to db thread
+                    if (ConfigData["sqlite"]["use"] == "1"):
+                        ThreadData['db']['worker'].putQueue(msg)
+
+                    # to firebase thread
+                    if (ConfigData["firebase"]["use"] == "1"):
+                        ThreadData['firebase']['worker'].putQueue(msg)
+
+                    # to sensor thread(s)
                     for thSensor in ThreadData['sensor']:
                         thSensor['worker'].putQueue(msg)
                 else:
-                    if ThreadData['db']['heartbeat'] <= 0:
-                        logging.debug('[%-12s] type=%s', 'heartbeat error', 'db')
-                        # restart thread
+                    # check db thread
+                    if (ConfigData["sqlite"]["use"] == "1"):
+                        if ThreadData['db']['heartbeat'] <= 0:
+                            logging.debug('[%-12s] type=%s', 'heartbeat error', 'db')
+                            # restart thread (WIP)
+                        ThreadData['db']['heartbeat'] = 0
 
-                    ThreadData['db']['heartbeat'] = 0
+                    # check firebase thread
+                    if (ConfigData["firebase"]["use"] == "1"):
+                        if ThreadData['firebase']['heartbeat'] <= 0:
+                            logging.debug('[%-12s] type=%s', 'heartbeat error', 'firebase')
+                            # restart thread
+                        ThreadData['firebase']['heartbeat'] = 0
 
-                    if ThreadData['firebase']['heartbeat'] <= 0:
-                        logging.debug('[%-12s] type=%s', 'heartbeat error', 'firebase')
-                        # restart thread
-
-                    ThreadData['firebase']['heartbeat'] = 0
-
+                    # check sensor thread(s)
                     for thSensor in ThreadData['sensor']:
                         if thSensor['heartbeat'] <= 0:
                             logging.debug('[%-12s] type=%s', 'heartbeat error', 'sensor')
                             # restart thread
-
                         thSensor['heartbeat'] = 0
 
                 # toggle send or check
                 isSendOrCheck = not isSendOrCheck
-
 
             pass
 
