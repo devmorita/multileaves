@@ -51,14 +51,8 @@ This is the multi-thread program to communicate with leafees those are the magne
 ### 3. Run
 Here is the usage.
 ```
-USAGE   : python simpleleaf.py {leafee device address} {device no} {options: print / debug / save / sqlite}
-EXAMPLE : python simpleleaf.py "xx:xx:xx:xx:xx:xx" 1 print save sqlite
+USAGE   : python　multileaves.py
 ```
-* `device no     : any number to identify the log.`
-* `print option  : standard output, set to use.`
-* `debug option  : same as print option.`
-* `save  option  : save the log. set to use with sqlite option`
-* `sqlite option : save the log int sqlite. set to use with save option.`
 
 ### 4. Stop
 
